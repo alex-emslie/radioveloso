@@ -23,12 +23,6 @@ module Rails
         super(message)
       end
 
-      if !Exception.method_defined?(:detailed_message)
-        def detailed_message(...)
-          message
-        end
-      end
-
       if defined?(DidYouMean::Correctable) && defined?(DidYouMean::SpellChecker)
         include DidYouMean::Correctable
 
@@ -104,7 +98,7 @@ module Rails
         namespaces[(lookups & namespaces.keys).first]
       end
 
-      # Returns the root of the Rails engine or app running the command.
+      # Returns the root of the \Rails engine or app running the command.
       def root
         if defined?(ENGINE_ROOT)
           Pathname.new(ENGINE_ROOT)

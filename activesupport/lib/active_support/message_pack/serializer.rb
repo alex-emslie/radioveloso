@@ -25,7 +25,7 @@ module ActiveSupport
       end
 
       def signature?(dumped)
-        dumped.start_with?(SIGNATURE)
+        dumped.getbyte(0) == SIGNATURE.getbyte(0) && dumped.getbyte(1) == SIGNATURE.getbyte(1)
       end
 
       def message_pack_factory
@@ -51,7 +51,7 @@ module ActiveSupport
               install_unregistered_type_handler
               message_pack_factory.freeze
             end
-            message_pack_factory.pool(ENV.fetch("RAILS_MAX_THREADS") { 5 })
+            message_pack_factory.pool(ENV.fetch("RAILS_MAX_THREADS", 5).to_i)
           end
         end
 

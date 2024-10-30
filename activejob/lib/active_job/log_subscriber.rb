@@ -1,6 +1,5 @@
 # frozen_string_literal: true
 
-require "active_support/core_ext/string/filters"
 require "active_support/log_subscriber"
 
 module ActiveJob
@@ -9,7 +8,7 @@ module ActiveJob
 
     def enqueue(event)
       job = event.payload[:job]
-      ex = event.payload[:exception_object]
+      ex = event.payload[:exception_object] || job.enqueue_error
 
       if ex
         error do
@@ -29,7 +28,7 @@ module ActiveJob
 
     def enqueue_at(event)
       job = event.payload[:job]
-      ex = event.payload[:exception_object]
+      ex = event.payload[:exception_object] || job.enqueue_error
 
       if ex
         error do
@@ -77,7 +76,9 @@ module ActiveJob
     def perform_start(event)
       info do
         job = event.payload[:job]
-        "Performing #{job.class.name} (Job ID: #{job.job_id}) from #{queue_name(event)} enqueued at #{job.enqueued_at}" + args_info(job)
+        enqueue_info = job.enqueued_at.present? ? " enqueued at #{job.enqueued_at.utc.iso8601(9)}" : ""
+
+        "Performing #{job.class.name} (Job ID: #{job.job_id}) from #{queue_name(event)}" + enqueue_info + args_info(job)
       end
     end
     subscribe_log_level :perform_start, :info
@@ -124,7 +125,7 @@ module ActiveJob
         "Stopped retrying #{job.class} (Job ID: #{job.job_id}) due to a #{ex.class} (#{ex.message}), which reoccurred on #{job.executions} attempts."
       end
     end
-    subscribe_log_level :enqueue_retry, :error
+    subscribe_log_level :retry_stopped, :error
 
     def discard(event)
       job = event.payload[:job]
@@ -188,15 +189,19 @@ module ActiveJob
       end
 
       def log_enqueue_source
-        source = extract_enqueue_source_location(caller)
+        source = enqueue_source_location
 
         if source
           logger.info("↳ #{source}")
         end
       end
 
-      def extract_enqueue_source_location(locations)
-        backtrace_cleaner.clean(locations.lazy).first
+      def enqueue_source_location
+        Thread.each_caller_location do |location|
+          frame = backtrace_cleaner.clean_frame(location)
+          return frame if frame
+        end
+        nil
       end
 
       def enqueued_jobs_message(adapter, enqueued_jobs)

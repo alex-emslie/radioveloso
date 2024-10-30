@@ -3,7 +3,7 @@
 require "cases/helper"
 require "support/schema_dumping_helper"
 
-if ActiveRecord::Base.connection.supports_check_constraints?
+if ActiveRecord::Base.lease_connection.supports_check_constraints?
   module ActiveRecord
     class Migration
       class CheckConstraintTest < ActiveRecord::TestCase
@@ -13,7 +13,7 @@ if ActiveRecord::Base.connection.supports_check_constraints?
         end
 
         setup do
-          @connection = ActiveRecord::Base.connection
+          @connection = ActiveRecord::Base.lease_connection
           @connection.create_table "trades", force: true do |t|
             t.integer :price
             t.integer :quantity
@@ -24,7 +24,7 @@ if ActiveRecord::Base.connection.supports_check_constraints?
             t.integer :quantity
           end
 
-          if current_adapter?(:Mysql2Adapter)
+          if current_adapter?(:Mysql2Adapter, :TrilogyAdapter)
             @connection.create_table "constraint_test", force: true do |t|
               t.json :options, default: nil
             end
@@ -35,7 +35,7 @@ if ActiveRecord::Base.connection.supports_check_constraints?
           @connection.drop_table "trades", if_exists: true rescue nil
           @connection.drop_table "purchases", if_exists: true rescue nil
 
-          if current_adapter?(:Mysql2Adapter)
+          if current_adapter?(:Mysql2Adapter, :TrilogyAdapter)
             @connection.drop_table "constraint_test", if_exists: true rescue nil
           end
         end
@@ -54,7 +54,7 @@ if ActiveRecord::Base.connection.supports_check_constraints?
             assert_equal "price > discounted_price", constraint.expression
           end
 
-          if current_adapter?(:Mysql2Adapter)
+          if current_adapter?(:Mysql2Adapter, :TrilogyAdapter)
             begin
               @connection.add_check_constraint(:constraint_test, <<~SQL,
                 json_contains('
@@ -123,6 +123,14 @@ if ActiveRecord::Base.connection.supports_check_constraints?
           end
         end
 
+        def test_add_check_constraint_with_if_not_exists_options
+          @connection.add_check_constraint :trades, "quantity > 0"
+
+          assert_nothing_raised do
+            @connection.add_check_constraint :trades, "quantity > 0", if_not_exists: true
+          end
+        end
+
         if supports_non_unique_constraint_name?
           def test_add_constraint_with_same_name_to_different_table
             @connection.add_check_constraint :trades, "quantity > 0", name: "greater_than_zero"
@@ -157,7 +165,7 @@ if ActiveRecord::Base.connection.supports_check_constraints?
           end
         end
 
-        if ActiveRecord::Base.connection.supports_validate_constraints?
+        if ActiveRecord::Base.lease_connection.supports_validate_constraints?
           def test_not_valid_check_constraint
             Trade.create(quantity: -1)
 
@@ -234,6 +242,16 @@ if ActiveRecord::Base.connection.supports_check_constraints?
           assert_equal "At least one of :name or :expression must be supplied", error.message
         end
 
+        if supports_sql_standard_drop_constraint?
+          def test_remove_constraint
+            @connection.add_check_constraint :trades, "quantity > 0", name: "quantity_check"
+
+            assert_equal 1, @connection.check_constraints("trades").size
+            @connection.remove_constraint :trades, "quantity_check"
+            assert_equal 0, @connection.check_constraints("trades").size
+          end
+        end
+
         def test_remove_check_constraint
           @connection.add_check_constraint :trades, "price > 0", name: "price_check"
           @connection.add_check_constraint :trades, "quantity > 0", name: "quantity_check"
@@ -259,13 +277,15 @@ if ActiveRecord::Base.connection.supports_check_constraints?
         def test_removing_check_constraint_with_if_exists_option
           @connection.add_check_constraint :trades, "quantity > 0", name: "quantity_check"
 
-          @connection.remove_check_constraint :trades, name: "quantity_check"
+          assert_nothing_raised do
+            @connection.remove_check_constraint :trades, name: "quantity_check", if_exists: true
+          end
 
           error = assert_raises ArgumentError do
             @connection.remove_check_constraint :trades, name: "quantity_check"
           end
 
-          assert_equal "Table 'trades' has no check constraint for {:name=>\"quantity_check\"}", error.message
+          assert_equal "Table 'trades' has no check constraint for #{{ name: "quantity_check" }}", error.message
 
           assert_nothing_raised do
             @connection.remove_check_constraint :trades, name: "quantity_check", if_exists: true
@@ -303,17 +323,21 @@ if ActiveRecord::Base.connection.supports_check_constraints?
 else
   module ActiveRecord
     class Migration
-      class NoForeignKeySupportTest < ActiveRecord::TestCase
+      class NoCheckConstraintSupportTest < ActiveRecord::TestCase
         setup do
-          @connection = ActiveRecord::Base.connection
+          @connection = ActiveRecord::Base.lease_connection
         end
 
         def test_add_check_constraint_should_be_noop
-          @connection.add_check_constraint :products, "discounted_price > 0", name: "discounted_price_check"
+          assert_nothing_raised do
+            @connection.add_check_constraint :products, "discounted_price > 0", name: "discounted_price_check"
+          end
         end
 
         def test_remove_check_constraint_should_be_noop
-          @connection.remove_check_constraint :products, name: "price_check"
+          assert_nothing_raised do
+            @connection.remove_check_constraint :products, name: "price_check"
+          end
         end
 
         def test_check_constraints_should_raise_not_implemented

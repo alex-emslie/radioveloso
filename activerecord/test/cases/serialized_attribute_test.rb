@@ -4,7 +4,6 @@ require "cases/helper"
 require "models/person"
 require "models/traffic_light"
 require "models/post"
-require "models/binary_field"
 
 class SerializedAttributeTest < ActiveRecord::TestCase
   def setup
@@ -134,7 +133,7 @@ class SerializedAttributeTest < ActiveRecord::TestCase
 
     # Force a row to have a JSON "null" instead of a database NULL (this is how
     # null values are saved on 4.1 and before)
-    id = Topic.connection.insert "INSERT INTO topics (content) VALUES('null')"
+    id = Topic.lease_connection.insert "INSERT INTO topics (content) VALUES('null')"
     t = Topic.find(id)
 
     assert_nil t.content
@@ -144,7 +143,7 @@ class SerializedAttributeTest < ActiveRecord::TestCase
     Topic.serialize :content, coder: JSON
 
     # Force a row to have a database NULL instead of a JSON "null"
-    id = Topic.connection.insert "INSERT INTO topics (content) VALUES(NULL)"
+    id = Topic.lease_connection.insert "INSERT INTO topics (content) VALUES(NULL)"
     t = Topic.find(id)
 
     assert_nil t.content
@@ -178,6 +177,15 @@ class SerializedAttributeTest < ActiveRecord::TestCase
     topic = ClassifiedTopic.create(important: Symbol).reload
     assert_equal(Symbol, topic.important)
     assert_not_empty ClassifiedTopic.where(important: Symbol)
+  end
+
+  def test_serialized_class_does_not_become_frozen
+    ActiveRecord.yaml_column_permitted_classes += [Class]
+
+    assert_not_predicate Symbol, :frozen?
+    ClassifiedTopic.create(important: Symbol)
+    assert_not_empty ClassifiedTopic.where(important: Symbol)
+    assert_not_predicate Symbol, :frozen?
   end
 
   def test_nil_serialized_attribute_without_class_constraint
@@ -237,7 +245,7 @@ class SerializedAttributeTest < ActiveRecord::TestCase
     settings = { "color" => "green" }
     Topic.serialize(:content, type: Hash)
     topic = Topic.create!(content: settings)
-    assert_equal topic, Topic.where(content: [settings]).take
+    assert_equal topic, Topic.where(content: [settings, { "herring" => "red" }]).take
   end
 
   def test_serialized_default_class
@@ -326,7 +334,7 @@ class SerializedAttributeTest < ActiveRecord::TestCase
     error = assert_raise(ActiveRecord::SerializationTypeMismatch) do
       topic.content
     end
-    expected = "can't load `content`: was supposed to be a Array, but was a Hash. -- {:zomg=>true}"
+    expected = "can't load `content`: was supposed to be a Array, but was a Hash. -- #{{ zomg: true }}"
     assert_equal expected, error.to_s
   end
 
@@ -372,36 +380,37 @@ class SerializedAttributeTest < ActiveRecord::TestCase
     assert_equal({}, topic.content)
   end
 
-  if current_adapter?(:Mysql2Adapter, :TrilogyAdapter)
-    def test_is_not_changed_when_stored_in_mysql_blob
-      value = %w(Fée)
-      model = BinaryField.create!(normal_blob: value, normal_text: value)
-      model.reload
+  def test_is_not_changed_when_stored_blob
+    Topic.serialize(:binary_content, type: Array)
+    Topic.serialize(:content, type: Array)
 
-      model.normal_text = value
-      assert_not_predicate model, :normal_text_changed?
+    value = %w(Fée)
+    model = Topic.create!(binary_content: value, content: value)
+    model.reload
 
-      model.normal_blob = value
-      assert_not_predicate model, :normal_blob_changed?
+    model.binary_content = value
+    assert_not_predicate model, :binary_content_changed?
+
+    model.content = value
+    assert_not_predicate model, :content_changed?
+  end
+
+  class FrozenCoder < ActiveRecord::Coders::YAMLColumn
+    def dump(obj)
+      super&.freeze
     end
+  end
 
-    class FrozenBinaryField < BinaryField
-      class FrozenCoder < ActiveRecord::Coders::YAMLColumn
-        def dump(obj)
-          super&.freeze
-        end
-      end
-      serialize(:normal_blob, coder: FrozenCoder.new(:normal_blob, Array))
-    end
+  def test_is_not_changed_when_stored_in_blob_frozen_payload
+    Topic.serialize(:binary_content, coder: FrozenCoder.new(:binary_content, Array))
+    Topic.serialize(:content, coder: FrozenCoder.new(:content, Array))
 
-    def test_is_not_changed_when_stored_in_mysql_blob_frozen_payload
-      value = %w(Fée)
-      model = FrozenBinaryField.create!(normal_blob: value, normal_text: value)
-      model.reload
+    value = %w(Fée)
+    model = Topic.create!(binary_content: value, content: value)
+    model.reload
 
-      model.normal_blob = value
-      assert_not_predicate model, :normal_blob_changed?
-    end
+    model.content = value
+    assert_not_predicate model, :content_changed?
   end
 
   def test_values_cast_from_nil_are_persisted_as_nil
@@ -425,10 +434,13 @@ class SerializedAttributeTest < ActiveRecord::TestCase
     end
 
     subclass = Class.new(klass) do
-      self.table_name = "posts"
+      self.table_name = "topics"
     end
 
     subclass.define_attribute_methods
+
+    topic = subclass.create!(content: { foo: 1 })
+    assert_equal [topic], subclass.where(content: { foo: 1 }).to_a
   end
 
   def test_nil_is_always_persisted_as_null
@@ -493,11 +505,12 @@ class SerializedAttributeTest < ActiveRecord::TestCase
     klass = Class.new(ActiveRecord::Base) do
       self.table_name = Topic.table_name
       store :content, coder: ActiveRecord::Coders::JSON
-      attribute(:content) { |subtype| EncryptedType.new(subtype: subtype) }
+      decorate_attributes([:content]) do |name, type|
+        EncryptedType.new(subtype: type)
+      end
     end
 
     topic = klass.create!(content: { trial: true })
-
     assert_equal({ "trial" => true }, topic.content)
   end
 
@@ -651,7 +664,7 @@ class SerializedAttributeTestWithYamlSafeLoad < SerializedAttributeTest
     error = assert_raise(ActiveRecord::SerializationTypeMismatch) do
       topic.content
     end
-    expected = "can't load `content`: was supposed to be a Array, but was a Hash. -- {\"zomg\"=>true}"
+    expected = "can't load `content`: was supposed to be a Array, but was a Hash. -- #{{ "zomg" => true }}"
     assert_equal expected, error.to_s
   end
 
@@ -683,27 +696,5 @@ class SerializedAttributeTestWithYamlSafeLoad < SerializedAttributeTest
     Topic.serialize(:content, yaml: { permitted_classes: [Time] })
     topic = Topic.new(content: Time.now)
     assert topic.save
-  end
-
-  def test_recognizes_coder_as_deprecated_positional_argument
-    some_coder = Struct.new(:foo) do
-      def self.dump(value)
-        value.foo
-      end
-
-      def self.load(value)
-        new(value)
-      end
-    end
-
-    assert_deprecated(/Please pass the coder as a keyword argument/, ActiveRecord.deprecator) do
-      Topic.serialize(:content, some_coder)
-    end
-  end
-
-  def test_recognizes_type_as_deprecated_positional_argument
-    assert_deprecated(/Please pass the class as a keyword argument/, ActiveRecord.deprecator) do
-      Topic.serialize(:content, Hash)
-    end
   end
 end

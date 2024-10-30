@@ -13,7 +13,7 @@ module ActiveSupport
   # +MessageVerifier+ makes it easy to generate and verify messages which are
   # signed to prevent tampering.
   #
-  # In a Rails application, you can use +Rails.application.message_verifier+
+  # In a \Rails application, you can use +Rails.application.message_verifier+
   # to manage unique instances of verifiers for each use case.
   # {Learn more}[link:classes/Rails/Application.html#method-i-message_verifier].
   #
@@ -29,6 +29,18 @@ module ActiveSupport
   #   if time.future?
   #     self.current_user = User.find(id)
   #   end
+  #
+  # === Signing is not encryption
+  #
+  # The signed messages are not encrypted. The payload is merely encoded (Base64 by default) and can be decoded by
+  # anyone. The signature is just assuring that the message wasn't tampered with. For example:
+  #
+  #     message = Rails.application.message_verifier('my_purpose').generate('never put secrets here')
+  #     # => "BAhJIhtuZXZlciBwdXQgc2VjcmV0cyBoZXJlBjoGRVQ=--a0c1c0827919da5e949e989c971249355735e140"
+  #     Base64.decode64(message.split("--").first) # no key needed
+  #     # => 'never put secrets here'
+  #
+  # If you also need to encrypt the contents, you must use ActiveSupport::MessageEncryptor instead.
   #
   # === Confine messages to a specific purpose
   #
@@ -70,7 +82,7 @@ module ActiveSupport
   #
   # Messages can then be verified and returned until expiry.
   # Thereafter, the +verified+ method returns +nil+ while +verify+ raises
-  # <tt>ActiveSupport::MessageVerifier::InvalidSignature</tt>.
+  # +ActiveSupport::MessageVerifier::InvalidSignature+.
   #
   # === Rotating keys
   #
@@ -299,6 +311,10 @@ module ActiveSupport
 
     def read_message(message, **options) # :nodoc:
       deserialize_with_metadata(decode(extract_encoded(message)), **options)
+    end
+
+    def inspect # :nodoc:
+      "#<#{self.class.name}:#{'%#016x' % (object_id << 1)}>"
     end
 
     private

@@ -64,8 +64,6 @@ Hence, the cookie serves as temporary authentication for the web application. An
 
 * Instead of stealing a cookie unknown to the attacker, they fix a user's session identifier (in the cookie) known to them. Read more about this so-called session fixation later.
 
-The main objective of most attackers is to make money. The underground prices for stolen bank login accounts range from 0.5%-10% of account balance, $0.5-$30 for credit card numbers ($20-$60 with full details), $0.1-$1.5 for identities (Name, SSN, and DOB), $20-$50 for retailer accounts, and $6-$10 for cloud service provider accounts, according to the [Symantec Internet Security Threat Report (2017)](https://docs.broadcom.com/docs/istr-22-2017-en).
-
 ### Session Storage
 
 NOTE: Rails uses `ActionDispatch::Session::CookieStore` as the default session storage.
@@ -364,7 +362,7 @@ Whenever the user is allowed to pass (parts of) the URL for redirection, it is p
 
 ```ruby
 def legacy
-  redirect_to(params.update(action: 'main'))
+  redirect_to(params.update(action: "main"))
 end
 ```
 
@@ -397,10 +395,10 @@ def sanitize_filename(filename)
   filename.strip.tap do |name|
     # NOTE: File.basename doesn't work right with Windows paths on Unix
     # get only the filename, not the whole path
-    name.sub!(/\A.*(\\|\/)/, '')
+    name.sub!(/\A.*(\\|\/)/, "")
     # Finally, replace all non alphanumeric, underscore
     # or periods with underscore
-    name.gsub!(/[^\w.-]/, '_')
+    name.gsub!(/[^\w.-]/, "_")
   end
 end
 ```
@@ -424,17 +422,16 @@ NOTE: _Make sure users cannot download arbitrary files._
 Just as you have to filter file names for uploads, you have to do so for downloads. The `send_file()` method sends files from the server to the client. If you use a file name, that the user entered, without filtering, any file can be downloaded:
 
 ```ruby
-send_file('/var/www/uploads/' + params[:filename])
+send_file("/var/www/uploads/" + params[:filename])
 ```
 
 Simply pass a file name like "../../../etc/passwd" to download the server's login information. A simple solution against this, is to _check that the requested file is in the expected directory_:
 
 ```ruby
-basename = File.expand_path('../../files', __dir__)
+basename = File.expand_path("../../files", __dir__)
 filename = File.expand_path(File.join(basename, @file.public_filename))
-raise if basename !=
-     File.expand_path(File.join(File.dirname(filename), '../../../'))
-send_file filename, disposition: 'inline'
+raise if basename != File.expand_path(File.dirname(filename))
+send_file filename, disposition: "inline"
 ```
 
 Another (additional) approach is to store the file names in the database and name the files on the disk after the ids in the database. This is also a good approach to avoid possible code in an uploaded file to be executed. The `attachment_fu` plugin does this in a similar way.
@@ -528,7 +525,7 @@ INFO: _A common pitfall in Ruby's regular expressions is to match the string's b
 Ruby uses a slightly different approach than many other languages to match the end and the beginning of a string. That is why even many Ruby and Rails books get this wrong. So how is this a security threat? Say you wanted to loosely validate a URL field and you used a simple regular expression like this:
 
 ```ruby
-  /^https?:\/\/[^\n]+$/i
+/^https?:\/\/[^\n]+$/i
 ```
 
 This may work fine in some languages. However, _in Ruby `^` and `$` match the **line** beginning and line end_. And thus a URL like this passes the filter without problems:
@@ -542,7 +539,7 @@ http://hi.com
 This URL passes the filter because the regular expression matches - the second line, the rest does not matter. Now imagine we had a view that showed the URL like this:
 
 ```ruby
-  link_to "Homepage", @user.homepage
+link_to "Homepage", @user.homepage
 ```
 
 The link looks innocent to visitors, but when it's clicked, it will execute the JavaScript function "exploit_code" or any other JavaScript the attacker provides.
@@ -550,14 +547,14 @@ The link looks innocent to visitors, but when it's clicked, it will execute the 
 To fix the regular expression, `\A` and `\z` should be used instead of `^` and `$`, like so:
 
 ```ruby
-  /\Ahttps?:\/\/[^\n]+\z/i
+/\Ahttps?:\/\/[^\n]+\z/i
 ```
 
 Since this is a frequent mistake, the format validator (validates_format_of) now raises an exception if the provided regular expression starts with ^ or ends with $. If you do need to use ^ and $ instead of \A and \z (which is rare), you can set the :multiline option to true, like so:
 
 ```ruby
-  # content should include a line "Meanwhile" anywhere in the string
-  validates :content, format: { with: /^Meanwhile$/, multiline: true }
+# content should include a line "Meanwhile" anywhere in the string
+validates :content, format: { with: /^Meanwhile$/, multiline: true }
 ```
 
 Note that this only protects you against the most common mistake when using the format validator - you always need to keep in mind that ^ and $ match the **line** beginning and line end in Ruby, and not the beginning and end of a string.
@@ -580,7 +577,7 @@ This is alright for some web applications, but certainly not if the user is not 
 
 Depending on your web application, there will be many more parameters the user can tamper with. As a rule of thumb, _no user input data is secure, until proven otherwise, and every parameter from the user is potentially manipulated_.
 
-Don't be fooled by security by obfuscation and JavaScript security. Developer tools let you review and change every form's hidden fields. _JavaScript can be used to validate user input data, but certainly not to prevent attackers from sending malicious requests with unexpected values_. The Firebug addon for Mozilla Firefox logs every request and may repeat and change them. That is an easy way to bypass any JavaScript validations. And there are even client-side proxies that allow you to intercept any request and response from and to the Internet.
+Don't be fooled by security by obfuscation and JavaScript security. Developer tools let you review and change every form's hidden fields. _JavaScript can be used to validate user input data, but certainly not to prevent attackers from sending malicious requests with unexpected values_. DevTools log every request and may repeat and change them. That is an easy way to bypass any JavaScript validations. And there are even client-side proxies that allow you to intercept any request and response from and to the Internet.
 
 Injection
 ---------
@@ -662,7 +659,8 @@ SELECT * FROM projects WHERE (name = '') UNION
 
 The result won't be a list of projects (because there is no project with an empty name), but a list of usernames and their password. So hopefully you [securely hashed the passwords](#user-management) in the database! The only problem for the attacker is, that the number of columns has to be the same in both queries. That's why the second query includes a list of ones (1), which will be always the value 1, in order to match the number of columns in the first query.
 
-Also, the second query renames some columns with the AS statement so that the web application displays the values from the user table. Be sure to update your Rails [to at least 2.1.1](https://rorsecurity.info/journal/2008/09/08/sql-injection-issue-in-limit-and-offset-parameter.html).
+Also, the second query renames some columns with the AS statement so that the
+Web application displays the values from the user table.
 
 #### Countermeasures
 
@@ -674,7 +672,7 @@ Instead of passing a string, you can use positional handlers to sanitize tainted
 Model.where("zip_code = ? AND quantity >= ?", entered_zip_code, entered_quantity).first
 ```
 
-The first parameter is a SQL fragment with question marks. The second and third
+The first parameter is an SQL fragment with question marks. The second and third
 parameter will replace the question marks with the value of the variables.
 
 You can also use named handlers, the values will be taken from the hash used:
@@ -708,7 +706,7 @@ The most common entry points are message posts, user comments, and guest books, 
 
 XSS attacks work like this: An attacker injects some code, the web application saves it and displays it on a page, later presented to a victim. Most XSS examples simply display an alert box, but it is more powerful than that. XSS can steal the cookie, hijack the session, redirect the victim to a fake website, display advertisements for the benefit of the attacker, change elements on the website to get confidential information or install malicious software through security holes in the web browser.
 
-During the second half of 2007, there were 88 vulnerabilities reported in Mozilla browsers, 22 in Safari, 18 in IE, and 12 in Opera. The Symantec Global Internet Security threat report also documented 239 browser plug-in vulnerabilities in the last six months of 2007. [Mpack](https://www.pandasecurity.com/en/mediacenter/malware/mpack-uncovered/) is a very active and up-to-date attack framework which exploits these vulnerabilities. For criminal hackers, it is very attractive to exploit a SQL-Injection vulnerability in a web application framework and insert malicious code in every textual table column. In April 2008 more than 510,000 sites were hacked like this, among them the British government, United Nations, and many more high profile targets.
+During the second half of 2007, there were 88 vulnerabilities reported in Mozilla browsers, 22 in Safari, 18 in IE, and 12 in Opera. The Symantec Global Internet Security threat report also documented 239 browser plug-in vulnerabilities in the last six months of 2007. [Mpack](https://www.pandasecurity.com/en/mediacenter/malware/mpack-uncovered/) is a very active and up-to-date attack framework which exploits these vulnerabilities. For criminal hackers, it is very attractive to exploit an SQL-Injection vulnerability in a web application framework and insert malicious code in every textual table column. In April 2008 more than 510,000 sites were hacked like this, among them the British government, United Nations, and many more high profile targets.
 
 #### HTML/JavaScript Injection
 
@@ -789,6 +787,8 @@ s = sanitize(user_input, tags: tags, attributes: %w(href title))
 
 This allows only the given tags and does a good job, even against all kinds of tricks and malformed tags.
 
+Both Action View and Action Text build their [sanitization helpers](https://api.rubyonrails.org/classes/ActionView/Helpers/SanitizeHelper.html) on top of the [rails-html-sanitizer](https://github.com/rails/rails-html-sanitizer) gem.
+
 As a second step, _it is good practice to escape all output of the application_, especially when re-displaying user input, which hasn't been input-filtered (as in the search form example earlier on). _Use `html_escape()` (or its alias `h()`) method_ to replace the HTML input characters `&`, `"`, `<`, and `>` by their uninterpreted representations in HTML (`&amp;`, `&quot;`, `&lt;`, and `&gt;`).
 
 ##### Obfuscation and Encoding Injection
@@ -862,19 +862,20 @@ This example, again, showed that a restricted list filter is never complete. How
 
 ### Textile Injection
 
-If you want to provide text formatting other than HTML (due to security), use a mark-up language which is converted to HTML on the server-side. [RedCloth](http://redcloth.org/) is such a language for Ruby, but without precautions, it is also vulnerable to XSS.
+If you want to provide text formatting other than HTML (due to security), use a mark-up language which is converted to HTML on the server-side. [RedCloth](https://github.com/jgarber/redcloth) is such a language for Ruby, but without precautions, it is also vulnerable to XSS.
 
-For example, RedCloth translates `_test_` to `<em>test<em>`, which makes the text italic. However, up to the current version 3.0.4, it is still vulnerable to XSS. Get the [all-new version 4](http://www.redcloth.org) that removed serious bugs. However, even that version has [some security bugs](https://rorsecurity.info/journal/2008/10/13/new-redcloth-security.html), so the countermeasures still apply. Here is an example for version 3.0.4:
+For example, RedCloth translates `_test_` to `<em>test<em>`, which makes the
+text italic. However, RedCloth doesn’t filter unsafe html tags by default:
 
 ```ruby
-RedCloth.new('<script>alert(1)</script>').to_html
+RedCloth.new("<script>alert(1)</script>").to_html
 # => "<script>alert(1)</script>"
 ```
 
 Use the `:filter_html` option to remove HTML which was not created by the Textile processor.
 
 ```ruby
-RedCloth.new('<script>alert(1)</script>', [:filter_html]).to_html
+RedCloth.new("<script>alert(1)</script>", [:filter_html]).to_html
 # => "alert(1)"
 ```
 
@@ -919,21 +920,21 @@ system("/bin/echo", "hello; rm *")
 `Kernel#open` executes OS command if the argument starts with a vertical bar (`|`).
 
 ```ruby
-open('| ls') { |file| file.read }
+open("| ls") { |file| file.read }
 # returns file list as a String via `ls` command
 ```
 
 Countermeasures are to use `File.open`, `IO.open` or `URI#open` instead. They don't execute an OS command.
 
 ```ruby
-File.open('| ls') { |file| file.read }
+File.open("| ls") { |file| file.read }
 # doesn't execute `ls` command, just opens `| ls` file if it exists
 
 IO.open(0) { |file| file.read }
 # opens stdin. doesn't accept a String as the argument
 
-require 'open-uri'
-URI('https://example.com').open { |file| file.read }
+require "open-uri"
+URI("https://example.com").open { |file| file.read }
 # opens the URI. `URI()` doesn't accept `| ls`
 ```
 
@@ -983,7 +984,7 @@ Rails.application.config.hosts << "product.com"
 
 Rails.application.config.host_authorization = {
   # Exclude requests for the /healthcheck/ path from host checking
-  exclude: ->(request) { request.path =~ /healthcheck/ }
+  exclude: ->(request) { request.path.include?("healthcheck") },
   # Add custom Rack application for the response
   response_app: -> env do
     [400, { "Content-Type" => "text/plain" }, ["Bad Request"]]
@@ -1115,19 +1116,19 @@ These headers are configured by default as follows:
 
 ```ruby
 config.action_dispatch.default_headers = {
-  'X-Frame-Options' => 'SAMEORIGIN',
-  'X-XSS-Protection' => '0',
-  'X-Content-Type-Options' => 'nosniff',
-  'X-Permitted-Cross-Domain-Policies' => 'none',
-  'Referrer-Policy' => 'strict-origin-when-cross-origin'
+  "X-Frame-Options" => "SAMEORIGIN",
+  "X-XSS-Protection" => "0",
+  "X-Content-Type-Options" => "nosniff",
+  "X-Permitted-Cross-Domain-Policies" => "none",
+  "Referrer-Policy" => "strict-origin-when-cross-origin"
 }
 ```
 
 You can override these or add extra headers in `config/application.rb`:
 
 ```ruby
-config.action_dispatch.default_headers['X-Frame-Options'] = 'DENY'
-config.action_dispatch.default_headers['Header-Name']     = 'Value'
+config.action_dispatch.default_headers["X-Frame-Options"] = "DENY"
+config.action_dispatch.default_headers["Header-Name"]     = "Value"
 ```
 
 Or you can remove them:
@@ -1138,13 +1139,13 @@ config.action_dispatch.default_headers.clear
 
 ### `Strict-Transport-Security` Header
 
-The HTTP [`Strict-Transport-Security`][] (HTST) response header makes sure the
+The HTTP [`Strict-Transport-Security`][] (HSTS) response header makes sure the
 browser automatically upgrades to HTTPS for current and future connections.
 
 The header is added to the response when enabling the `force_ssl` option:
 
 ```ruby
-  config.force_ssl = true
+config.force_ssl = true
 ```
 
 [`Strict-Transport-Security`]: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security
@@ -1280,10 +1281,11 @@ can be added to script tags by passing `nonce: true` as part of `html_options`:
 <% end -%>
 ```
 
-The same works with `javascript_include_tag`:
+The same works with `javascript_include_tag` and the `stylesheet_link_tag`:
 
 ```html+erb
 <%= javascript_include_tag "script", nonce: true %>
+<%= stylesheet_link_tag "style.css", nonce: true %>
 ```
 
 Use [`csp_meta_tag`](https://api.rubyonrails.org/classes/ActionView/Helpers/CspHelper.html#method-i-csp_meta_tag)
@@ -1352,18 +1354,18 @@ steps.
 To get started, add the rack-cors gem to your Gemfile:
 
 ```ruby
-gem 'rack-cors'
+gem "rack-cors"
 ```
 
 Next, add an initializer to configure the middleware:
 
 ```ruby
 # config/initializers/cors.rb
-Rails.application.config.middleware.insert_before 0, "Rack::Cors" do
+Rails.application.config.middleware.insert_before 0, Rack::Cors do
   allow do
-    origins 'example.com'
+    origins "example.com"
 
-    resource '*',
+    resource "*",
       headers: :any,
       methods: [:get, :post, :put, :patch, :delete, :options, :head]
   end
@@ -1456,6 +1458,5 @@ Additional Resources
 The security landscape shifts and it is important to keep up to date, because missing a new vulnerability can be catastrophic. You can find additional resources about (Rails) security here:
 
 * Subscribe to the Rails security [mailing list](https://discuss.rubyonrails.org/c/security-announcements/9).
-* [Brakeman - Rails Security Scanner](https://brakemanscanner.org/) - To perform static security analysis for Rails applications.
 * [Mozilla's Web Security Guidelines](https://infosec.mozilla.org/guidelines/web_security.html) - Recommendations on topics covering Content Security Policy, HTTP headers, Cookies, TLS configuration, etc.
-* A [good security blog](https://owasp.org/) including the [Cross-Site scripting Cheat Sheet](https://github.com/OWASP/CheatSheetSeries/blob/master/cheatsheets/Cross_Site_Scripting_Prevention_Cheat_Sheet.md).
+* A [good set of security resources](https://owasp.org/), notably the [Cheat Sheet Series](https://cheatsheetseries.owasp.org/index.html), with for example the [Cross-Site Scripting Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/Cross_Site_Scripting_Prevention_Cheat_Sheet.html).

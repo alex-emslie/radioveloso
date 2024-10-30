@@ -2,40 +2,12 @@
 
 require "active_record/connection_adapters/abstract_mysql_adapter"
 
-gem "trilogy", "~> 2.4"
+gem "trilogy", "~> 2.7"
 require "trilogy"
 
 require "active_record/connection_adapters/trilogy/database_statements"
-require "active_record/connection_adapters/trilogy/lost_connection_exception_translator"
-require "active_record/connection_adapters/trilogy/errors"
 
 module ActiveRecord
-  module ConnectionHandling # :nodoc:
-    def trilogy_adapter_class
-      ConnectionAdapters::TrilogyAdapter
-    end
-
-    # Establishes a connection to the database that's used by all Active Record objects.
-    def trilogy_connection(config)
-      configuration = config.dup
-
-      # Set FOUND_ROWS capability on the connection so UPDATE queries returns number of rows
-      # matched rather than number of rows updated.
-      configuration[:found_rows] = true
-
-      options = [
-        configuration[:host],
-        configuration[:port],
-        configuration[:database],
-        configuration[:username],
-        configuration[:password],
-        configuration[:socket],
-        0
-      ]
-
-      trilogy_adapter_class.new nil, logger, options, configuration
-    end
-  end
   module ConnectionAdapters
     class TrilogyAdapter < AbstractMysqlAdapter
       ER_BAD_DB_ERROR = 1049
@@ -58,7 +30,7 @@ module ActiveRecord
         def new_client(config)
           config[:ssl_mode] = parse_ssl_mode(config[:ssl_mode]) if config[:ssl_mode]
           ::Trilogy.new(config)
-        rescue ::Trilogy::ConnectionError, ::Trilogy::ProtocolError => error
+        rescue ::Trilogy::Error => error
           raise translate_connect_error(config, error)
         end
 
@@ -66,7 +38,6 @@ module ActiveRecord
           return mode if mode.is_a? Integer
 
           m = mode.to_s.upcase
-          # enable Mysql2 client compatibility
           m = "SSL_MODE_#{m}" unless m.start_with? "SSL_MODE_"
 
           SSL_MODES.fetch(m.to_sym, mode)
@@ -86,7 +57,40 @@ module ActiveRecord
             end
           end
         end
+
+        private
+          def initialize_type_map(m)
+            super
+
+            m.register_type(%r(char)i) do |sql_type|
+              limit = extract_limit(sql_type)
+              Type.lookup(:string, adapter: :trilogy, limit: limit)
+            end
+
+            m.register_type %r(^enum)i, Type.lookup(:string, adapter: :trilogy)
+            m.register_type %r(^set)i,  Type.lookup(:string, adapter: :trilogy)
+          end
       end
+
+      def initialize(config, *)
+        config = config.dup
+
+        # Trilogy ignores `socket` if `host is set. We want the opposite to allow
+        # configuring UNIX domain sockets via `DATABASE_URL`.
+        config.delete(:host) if config[:socket]
+
+        # Set FOUND_ROWS capability on the connection so UPDATE queries returns number of rows
+        # matched rather than number of rows updated.
+        config[:found_rows] = true
+
+        if config[:prepared_statements]
+          raise ArgumentError, "Trilogy currently doesn't support prepared statements. Remove `prepared_statements: true` from your database configuration."
+        end
+
+        super
+      end
+
+      TYPE_MAP = Type::TypeMap.new.tap { |m| initialize_type_map(m) }
 
       def supports_json?
         !mariadb? && database_version >= "5.7.8"
@@ -112,14 +116,12 @@ module ActiveRecord
         true
       end
 
-      def quote_string(string)
-        with_raw_connection(allow_retry: true, materialize_transactions: false) do |conn|
-          conn.escape(string)
-        end
+      def connected?
+        !(@raw_connection.nil? || @raw_connection.closed?)
       end
 
       def active?
-        connection&.ping || false
+        connected? && @lock.synchronize { @raw_connection&.ping } || false
       rescue ::Trilogy::Error
         false
       end
@@ -127,63 +129,44 @@ module ActiveRecord
       alias reset! reconnect!
 
       def disconnect!
-        super
-        unless connection.nil?
-          connection.close
-          self.connection = nil
+        @lock.synchronize do
+          super
+          @raw_connection&.close
+          @raw_connection = nil
         end
       end
 
       def discard!
-        super
-        unless connection.nil?
-          connection.discard!
-          self.connection = nil
+        @lock.synchronize do
+          super
+          @raw_connection&.discard!
+          @raw_connection = nil
         end
       end
 
       private
-        def each_hash(result)
-          return to_enum(:each_hash, result) unless block_given?
-
-          keys = result.fields.map(&:to_sym)
-          result.rows.each do |row|
-            hash = {}
-            idx = 0
-            row.each do |value|
-              hash[keys[idx]] = value
-              idx += 1
-            end
-            yield hash
-          end
-
-          nil
+        def text_type?(type)
+          TYPE_MAP.lookup(type).is_a?(Type::String) || TYPE_MAP.lookup(type).is_a?(Type::Text)
         end
 
         def error_number(exception)
           exception.error_code if exception.respond_to?(:error_code)
         end
 
-        def connection
-          @raw_connection
-        end
-
-        def connection=(conn)
-          @raw_connection = conn
-        end
-
         def connect
-          self.connection = self.class.new_client(@config)
+          @raw_connection = self.class.new_client(@config)
+        rescue ConnectionNotEstablished => ex
+          raise ex.set_pool(@pool)
         end
 
         def reconnect
-          connection&.close
-          self.connection = nil
+          @raw_connection&.close
+          @raw_connection = nil
           connect
         end
 
         def full_version
-          schema_cache.database_version.full_version_string
+          database_version.full_version_string
         end
 
         def get_full_version
@@ -193,14 +176,37 @@ module ActiveRecord
         end
 
         def translate_exception(exception, message:, sql:, binds:)
-          error_code = exception.error_code if exception.respond_to?(:error_code)
+          if exception.is_a?(::Trilogy::TimeoutError) && !exception.error_code
+            return ActiveRecord::AdapterTimeout.new(message, sql: sql, binds: binds, connection_pool: @pool)
+          end
 
-          Trilogy::LostConnectionExceptionTranslator.new(exception, message, error_code).translate || super
+          case exception
+          when ::Trilogy::ConnectionClosed, ::Trilogy::EOFError
+            return ConnectionFailed.new(message, connection_pool: @pool)
+          when ::Trilogy::Error
+            if exception.is_a?(SystemCallError) || exception.message.include?("TRILOGY_INVALID_SEQUENCE_ID")
+              return ConnectionFailed.new(message, connection_pool: @pool)
+            end
+          end
+
+          super
         end
 
         def default_prepared_statements
           false
         end
+
+        ActiveRecord::Type.register(:immutable_string, adapter: :trilogy) do |_, **args|
+          Type::ImmutableString.new(true: "1", false: "0", **args)
+        end
+
+        ActiveRecord::Type.register(:string, adapter: :trilogy) do |_, **args|
+          Type::String.new(true: "1", false: "0", **args)
+        end
+
+        ActiveRecord::Type.register(:unsigned_integer, Type::UnsignedInteger, adapter: :trilogy)
     end
+
+    ActiveSupport.run_load_hooks(:active_record_trilogyadapter, TrilogyAdapter)
   end
 end

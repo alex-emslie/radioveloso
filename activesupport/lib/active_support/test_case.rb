@@ -1,9 +1,9 @@
 # frozen_string_literal: true
 
-gem "minitest" # make sure we get the gem, not stdlib
 require "minitest"
 require "active_support/testing/tagged_logging"
 require "active_support/testing/setup_and_teardown"
+require "active_support/testing/tests_without_assertions"
 require "active_support/testing/assertions"
 require "active_support/testing/error_reporter_assertions"
 require "active_support/testing/deprecation"
@@ -79,10 +79,8 @@ module ActiveSupport
       # number of tests to run is above the +threshold+ param. The default value is
       # 50, and it's configurable via +config.active_support.test_parallelization_threshold+.
       def parallelize(workers: :number_of_processors, with: :processes, threshold: ActiveSupport.test_parallelization_threshold)
-        workers = Concurrent.physical_processor_count if workers == :number_of_processors
+        workers = Concurrent.processor_count if workers == :number_of_processors
         workers = ENV["PARALLEL_WORKERS"].to_i if ENV["PARALLEL_WORKERS"]
-
-        return if workers <= 1
 
         Minitest.parallel_executor = ActiveSupport::Testing::ParallelizeExecutor.new(size: workers, with: with, threshold: threshold)
       end
@@ -120,12 +118,32 @@ module ActiveSupport
       def parallelize_teardown(&block)
         ActiveSupport::Testing::Parallelization.run_cleanup_hook(&block)
       end
+
+      # :singleton-method: fixture_paths
+      #
+      # Returns the ActiveRecord::FixtureSet collection.
+      #
+      # In your +test_helper.rb+ you must have <tt>require "rails/test_help"</tt>.
+
+      # :singleton-method: fixture_paths=
+      #
+      # :call-seq:
+      #   fixture_paths=(fixture_paths)
+      #
+      # Sets the given path to the fixture set.
+      #
+      # Can also append multiple paths.
+      #
+      #   ActiveSupport::TestCase.fixture_paths << "component1/test/fixtures"
+      #
+      # In your +test_helper.rb+ you must have <tt>require "rails/test_help"</tt>.
     end
 
     alias_method :method_name, :name
 
     include ActiveSupport::Testing::TaggedLogging
     prepend ActiveSupport::Testing::SetupAndTeardown
+    prepend ActiveSupport::Testing::TestsWithoutAssertions
     include ActiveSupport::Testing::Assertions
     include ActiveSupport::Testing::ErrorReporterAssertions
     include ActiveSupport::Testing::Deprecation

@@ -30,7 +30,7 @@ module ActiveRecord
   #
   #   ActiveRecord::Base.time_zone_aware_types = [:datetime]
   #
-  # You can also add database specific timezone aware types. For example, for PostgreSQL:
+  # You can also add database-specific timezone aware types. For example, for PostgreSQL:
   #
   #   ActiveRecord::Base.time_zone_aware_types += [:tsrange, :tstzrange]
   #
@@ -54,8 +54,10 @@ module ActiveRecord
 
     module ClassMethods # :nodoc:
       def touch_attributes_with_time(*names, time: nil)
+        names = names.map(&:to_s)
+        names = names.map { |name| attribute_aliases[name] || name }
         attribute_names = timestamp_attributes_for_update_in_model
-        attribute_names |= names.map(&:to_s)
+        attribute_names |= names
         attribute_names.index_with(time || current_time_from_proper_timezone)
       end
 
@@ -75,7 +77,7 @@ module ActiveRecord
       end
 
       def current_time_from_proper_timezone
-        connection.default_timezone == :utc ? Time.now.utc : Time.now
+        with_connection { |c| c.default_timezone == :utc ? Time.now.utc : Time.now }
       end
 
       protected
@@ -160,7 +162,7 @@ module ActiveRecord
 
     def max_updated_column_timestamp
       timestamp_attributes_for_update_in_model
-        .filter_map { |attr| self[attr]&.to_time }
+        .filter_map { |attr| (v = self[attr]) && (v.is_a?(::Time) ? v : v.to_time) }
         .max
     end
 
