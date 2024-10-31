@@ -5,7 +5,7 @@ module ActionView
     module Tags # :nodoc:
       class HiddenField < TextField # :nodoc:
         def render
-          @options[:autocomplete] = "off"
+          @options[:autocomplete] ||= "off"
           super
         end
       end

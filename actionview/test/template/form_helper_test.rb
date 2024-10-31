@@ -641,6 +641,13 @@ class FormHelperTest < ActionView::TestCase
     )
   end
 
+  def test_hidden_field_with_autocomplete
+    assert_dom_equal(
+      '<input id="session_username" name="session[username]" type="hidden" value="me@example.com" autocomplete="username" />',
+      hidden_field("session", "username", value: "me@example.com", autocomplete: "username")
+    )
+  end
+
   def test_text_field_with_custom_type
     assert_dom_equal(
       '<input id="user_email" name="user[email]" type="email" />',
