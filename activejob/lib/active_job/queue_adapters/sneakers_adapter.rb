@@ -21,7 +21,7 @@ module ActiveJob
       def check_adapter
         ActiveJob.deprecator.warn <<~MSG.squish
           The built-in `sneakers` adapter is deprecated and will be removed in Rails 8.1.
-          Please migrate from `sneakers` gem to `kicks` gem version 3.1 or later to use `ActiveJob` adapter from `kicks`.
+          Please migrate from `sneakers` gem to `kicks` gem version 3.1.1 or later to use `ActiveJob` adapter from `kicks`.
         MSG
       end
 

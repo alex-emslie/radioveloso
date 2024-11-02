@@ -40,7 +40,7 @@ class AdapterTest < ActiveSupport::TestCase
 
       msg = <<~MSG.squish
         The built-in `sneakers` adapter is deprecated and will be removed in Rails 8.1.
-        Please migrate from `sneakers` gem to `kicks` gem version 3.1 or later to use `ActiveJob` adapter from `kicks`.
+        Please migrate from `sneakers` gem to `kicks` gem version 3.1.1 or later to use `ActiveJob` adapter from `kicks`.
       MSG
       assert_deprecated(msg, ActiveJob.deprecator) do
         ActiveJob::Base.queue_adapter = :sneakers
@@ -53,7 +53,7 @@ class AdapterTest < ActiveSupport::TestCase
     test "sneakers check_adapter should warn" do
       msg = <<~MSG.squish
         The built-in `sneakers` adapter is deprecated and will be removed in Rails 8.1.
-        Please migrate from `sneakers` gem to `kicks` gem version 3.1 or later to use `ActiveJob` adapter from `kicks`.
+        Please migrate from `sneakers` gem to `kicks` gem version 3.1.1 or later to use `ActiveJob` adapter from `kicks`.
       MSG
       assert_deprecated(msg, ActiveJob.deprecator) do
         ActiveJob::Base.queue_adapter.check_adapter
