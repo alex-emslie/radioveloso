@@ -928,7 +928,7 @@ class ArticlesController < ApplicationController
 
   private
     def article_params
-      params.expect(article: [:title, :body])
+      params.expect(article: [ :title, :body ])
     end
 end
 ```
@@ -1106,7 +1106,7 @@ class ArticlesController < ApplicationController
 
   private
     def article_params
-      params.expect(article: [:title, :body])
+      params.expect(article: [ :title, :body ])
     end
 end
 ```
@@ -1263,7 +1263,7 @@ class ArticlesController < ApplicationController
 
   private
     def article_params
-      params.expect(article: [:title, :body])
+      params.expect(article: [ :title, :body ])
     end
 end
 ```
@@ -1517,7 +1517,7 @@ class CommentsController < ApplicationController
 
   private
     def comment_params
-      params.expect(comment: [:commenter, :body])
+      params.expect(comment: [ :commenter, :body ])
     end
 end
 ```
@@ -1740,7 +1740,7 @@ We also have to permit the `:status` key as part of the strong parameter, in `ap
 
   private
     def article_params
-      params.expect(article: [:title, :body, :status])
+      params.expect(article: [ :title, :body, :status ])
     end
 ```
 
@@ -1750,7 +1750,7 @@ and in `app/controllers/comments_controller.rb`:
 
   private
     def comment_params
-      params.expect(comment: [:commenter, :body, :status])
+      params.expect(comment: [ :commenter, :body, :status ])
     end
 ```
 
@@ -1996,7 +1996,7 @@ class CommentsController < ApplicationController
 
   private
     def comment_params
-      params.expect(comment: [:commenter, :body, :status])
+      params.expect(comment: [ :commenter, :body, :status ])
     end
 end
 ```
@@ -2046,7 +2046,7 @@ so we write that:
 
 ```ruby
 class ArticlesController < ApplicationController
-  http_basic_authenticate_with name: "dhh", password: "secret", except: [:index, :show]
+  http_basic_authenticate_with name: "dhh", password: "secret", except: [ :index, :show ]
 
   def index
     @articles = Article.all
