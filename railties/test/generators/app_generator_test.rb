@@ -1187,6 +1187,24 @@ class AppGeneratorTest < Rails::Generators::TestCase
     end
   end
 
+  def test_dockerignore_appends_storage_entries_when_active_storage_is_skippped
+    generator [destination_root], ["--skip-active-storage"]
+    run_generator_instance
+
+    assert_file ".dockerignore" do |content|
+      assert_match(%r{storage/}, content)
+    end
+  end
+
+  def test_dockerignore_does_not_append_storage_entries_when_active_storage_is_skipped_and_database_is_not_sqlite
+    generator [destination_root], ["--skip-active-storage", "--database=postgresql"]
+    run_generator_instance
+
+    assert_file ".dockerignore" do |content|
+      assert_no_match(%r{storage/}, content)
+    end
+  end
+
   def test_dockerfile
     run_generator
 
