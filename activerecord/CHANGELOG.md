@@ -1,3 +1,9 @@
+*   Fix `ActiveRecord::QueryMethods#in_order_of` when passing an out-of-range Integer.
+
+    To match the behavior of the `Enumerable` version, `in_order_of` now ignores an out-of-range Integer.
+
+    *tejanium*
+
 *   Add support for enabling or disabling transactional tests per database.
 
     A test class can now override the default `use_transactional_tests` setting
