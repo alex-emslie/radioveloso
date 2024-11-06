@@ -1,11 +1,4 @@
-*   `ActiveSupport::BroadcastLogger` now correctly supports `with_level`, which
-    has been available in
-    [Ruby's Logger](https://docs.ruby-lang.org/en/3.3/Logger.html#method-i-with_level)
-    and therefor _implicitly_ available via `BroadcastLogger`.
-
-    Previously, the behavior was for `#method_missing` to call `with_logger` on
-    _each_ of its broadcast loggers, which could cause the block to be invoked
-    multiple times when broadcasting to multiple loggers.
+*  Fix `ActiveSupport::BroadcastLogger` running blocks passed to `with_level` multiple times.
 
     *meagar*
 
