@@ -22,7 +22,7 @@ module Rails
       end
 
       def call(env)
-        if env["PATH_INFO"] == @path
+        if @path === env["PATH_INFO"]
           Rails.logger.silence { @app.call(env) }
         else
           @app.call(env)
