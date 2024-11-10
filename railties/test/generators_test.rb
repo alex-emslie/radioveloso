@@ -144,6 +144,38 @@ class GeneratorsTest < Rails::Generators::TestCase
     assert_no_match(/^  app$/, output)
   end
 
+  def test_rails_generators_help_lists_all_generators
+    output = capture(:stdout) { Rails::Generators.help }
+
+    generator_list = output.split("Please choose a generator below.\n", 2).last
+
+    sections = {
+      "Rails" => %w[application_record model scaffold_controller],
+      "ActiveRecord" => %w[active_record:application_record active_record:multi_db],
+      "Erb" => %w[erb:authentication],
+      "Fixjour" => %w[fixjour],
+      "Foobar" => %w[foobar:foobar],
+      "QueueClassic" => %w[queue_classic:install],
+      "Sidekiq" => %w[sidekiq:job],
+      "Stimulus" => %w[stimulus],
+      "SuckerPunch" => %w[sucker_punch:job],
+      "Tailwindcss" => %w[tailwindcss:controller tailwindcss:scaffold],
+      "TestUnit" => %w[test_unit:install test_unit:mailbox],
+      "UsageTemplate" => %w[usage_template]
+    }
+
+    sections.each do |section, generators|
+      assert_match(/^#{section}/, generator_list, "Expected section #{section} to be in the output")
+      generators.each do |generator|
+        assert_match(/^\s{2}#{generator}$/, generator_list, "Expected generator #{generator} in section #{section}")
+      end
+    end
+
+    expected_sections = sections.keys
+    output_sections = generator_list.scan(/^(.*):$/).flatten
+    assert_equal expected_sections.sort, output_sections.sort
+  end
+
   def test_rails_generators_help_does_not_include_app_nor_plugin_new
     output = capture(:stdout) { Rails::Generators.help }
     assert_no_match(/app\W/, output)
