@@ -7,4 +7,4 @@
     This approach is useful when the attached file experiences high traffic, potentially generating hundreds or thousands of requests, each attempting to create the variant. In such scenarios, this allows the same process responsible for creating the attachment to immediately create variants identified with the `immediate` option.
     *Tom Rossi*
 
-Please check [7-2-stable](https://github.com/rails/rails/blob/7-2-stable/activestorage/CHANGELOG.md) for previous changes.
+Please check [8-0-stable](https://github.com/rails/rails/blob/8-0-stable/activestorage/CHANGELOG.md) for previous changes.

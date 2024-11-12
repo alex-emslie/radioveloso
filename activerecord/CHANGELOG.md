@@ -1,55 +1,28 @@
-*   Allow to configure `strict_loading_mode` globally or within a model.
+*   Add support for enabling or disabling transactional tests per database.
 
-    Defaults to `:all`, can be changed to `:n_plus_one_only`.
-
-    *Garen Torikian*
-
-*   Add `ActiveRecord::Relation#readonly?`.
-
-    Reflects if the relation has been marked as readonly.
-
-    *Theodor Tonum*
-
-*   Improve `ActiveRecord::Store` to raise a descriptive exception if the column is not either
-    structured (e.g., PostgreSQL +hstore+/+json+, or MySQL +json+) or declared serializable via
-    `ActiveRecord.store`.
-
-    Previously, a `NoMethodError` would be raised when the accessor was read or written:
-
-        NoMethodError: undefined method `accessor' for an instance of ActiveRecord::Type::Text
-
-    Now, a descriptive `ConfigurationError` is raised:
-
-        ActiveRecord::ConfigurationError: the column 'metadata' has not been configured as a store.
-          Please make sure the column is declared serializable via 'ActiveRecord.store' or, if your
-          database supports it, use a structured column type like hstore or json.
-
-    *Mike Dalessio*
-
-*   Fix inference of association model on nested models with the same demodularized name.
-
-    E.g. with the following setup:
+    A test class can now override the default `use_transactional_tests` setting
+    for individual databases, which can be useful if some databases need their
+    current state to be accessible to an external process while tests are running.
 
     ```ruby
-    class Nested::Post < ApplicationRecord
-      has_one :post, through: :other
+    class MostlyTransactionalTest < ActiveSupport::TestCase
+      self.use_transactional_tests = true
+      skip_transactional_tests_for_database :shared
     end
     ```
 
-    Before, `#post` would infer the model as `Nested::Post`, but now it correctly infers `Post`.
+    *Matthew Cheetham*, *Morgan Mareve*
 
-    *Joshua Young*
+*   Cast `query_cache` value when using URL configuration.
 
-*   Add public method for checking if a table is ignored by the schema cache.
+    *zzak*
 
-    Previously, an application would need to reimplement `ignored_table?` from the schema cache class to check if a table was set to be ignored. This adds a public method to support this and updates the schema cache to use that directly.
+*   NULLS NOT DISTINCT works with UNIQUE CONSTRAINT as well as UNIQUE INDEX.
 
-    ```ruby
-    ActiveRecord.schema_cache_ignored_tables = ["developers"]
-    ActiveRecord.schema_cache_ignored_table?("developers")
-    => true
-    ```
+    *Ryuta Kamizono*
 
-    *Eileen M. Uchitelle*
+*   `PG::UnableToSend: no connection to the server` is now retryable as a connection-related exception
 
-Please check [7-2-stable](https://github.com/rails/rails/blob/7-2-stable/activerecord/CHANGELOG.md) for previous changes.
+    *Kazuma Watanabe*
+
+Please check [8-0-stable](https://github.com/rails/rails/blob/8-0-stable/activerecord/CHANGELOG.md) for previous changes.

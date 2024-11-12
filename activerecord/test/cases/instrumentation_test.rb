@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "cases/helper"
+require "models/author"
 require "models/book"
 require "models/clothing_item"
 
@@ -148,6 +149,29 @@ module ActiveRecord
       ActiveSupport::Notifications.unsubscribe(subscriber) if subscriber
     end
 
+    def test_payload_row_count_on_cache
+      events = []
+      callback = -> (event) do
+        payload = event.payload
+        events << payload if payload[:sql].include?("SELECT")
+      end
+
+      Book.create!(name: "row count book")
+      ActiveSupport::Notifications.subscribed(callback, "sql.active_record") do
+        Book.cache do
+          Book.first
+          Book.first
+        end
+      end
+
+      assert_equal 2, events.size
+      assert_not events[0][:cached]
+      assert events[1][:cached]
+
+      assert_equal 1, events[0][:row_count]
+      assert_equal 1, events[1][:row_count]
+    end
+
     def test_payload_connection_with_query_cache_disabled
       connection = ClothingItem.lease_connection
       subscriber = ActiveSupport::Notifications.subscribe("sql.active_record") do |_, _, _, _, payload|
@@ -170,48 +194,71 @@ module ActiveRecord
     ensure
       ActiveSupport::Notifications.unsubscribe(subscriber) if subscriber
     end
-  end
-end
 
-class ActiveRecord::TransactionInSqlActiveRecordPayloadTest < ActiveRecord::TestCase
-  # We need current_transaction to return the null transaction.
-  self.use_transactional_tests = false
+    def test_no_instantiation_notification_when_no_records
+      author = Author.create!(id: 100, name: "David")
 
-  def test_payload_without_an_open_transaction
-    asserted = false
-
-    subscriber = ActiveSupport::Notifications.subscribe("sql.active_record") do |event|
-      if event.payload.fetch(:name) == "Book Count"
-        assert_nil event.payload.fetch(:transaction)
-        asserted = true
+      called = false
+      subscriber = ActiveSupport::Notifications.subscribe("instantiation.active_record") do
+        called = true
       end
+
+      Author.where(id: 0).to_a
+      author.books.to_a
+
+      assert_equal false, called
+    ensure
+      ActiveSupport::Notifications.unsubscribe(subscriber) if subscriber
     end
-
-    Book.count
-
-    assert asserted
-  ensure
-    ActiveSupport::Notifications.unsubscribe(subscriber)
   end
 
-  def test_payload_with_an_open_transaction
-    asserted = false
-    expected_transaction = nil
+  module TransactionInSqlActiveRecordPayloadTests
+    def test_payload_without_an_open_transaction
+      asserted = false
 
-    subscriber = ActiveSupport::Notifications.subscribe("sql.active_record") do |event|
-      if event.payload.fetch(:name) == "Book Count"
-        assert_same expected_transaction, event.payload.fetch(:transaction)
-        asserted = true
+      subscriber = ActiveSupport::Notifications.subscribe("sql.active_record") do |event|
+        if event.payload.fetch(:name) == "Book Count"
+          assert_nil event.payload.fetch(:transaction)
+          asserted = true
+        end
       end
-    end
 
-    Book.transaction do |transaction|
-      expected_transaction = transaction
       Book.count
+
+      assert asserted
+    ensure
+      ActiveSupport::Notifications.unsubscribe(subscriber)
     end
 
-    assert asserted
-  ensure
-    ActiveSupport::Notifications.unsubscribe(subscriber)
+    def test_payload_with_an_open_transaction
+      asserted = false
+      expected_transaction = nil
+
+      subscriber = ActiveSupport::Notifications.subscribe("sql.active_record") do |event|
+        if event.payload.fetch(:name) == "Book Count"
+          assert_same expected_transaction, event.payload.fetch(:transaction)
+          asserted = true
+        end
+      end
+
+      Book.transaction do |transaction|
+        expected_transaction = transaction
+        Book.count
+      end
+
+      assert asserted
+    ensure
+      ActiveSupport::Notifications.unsubscribe(subscriber)
+    end
+  end
+
+  class TransactionInSqlActiveRecordPayloadTest < ActiveRecord::TestCase
+    include TransactionInSqlActiveRecordPayloadTests
+  end
+
+  class TransactionInSqlActiveRecordPayloadNonTransactionalTest < ActiveRecord::TestCase
+    include TransactionInSqlActiveRecordPayloadTests
+
+    self.use_transactional_tests = false
   end
 end
