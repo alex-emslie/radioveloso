@@ -1,3 +1,11 @@
+*   Add `load_columns` to specify which columns to load for eager loaded associations.
+
+    ```ruby
+    Post.includes(:comments).load_columns(comments: [:body])
+    ```
+
+    *Andrii Baran*
+
 *   Add support for enabling or disabling transactional tests per database.
 
     A test class can now override the default `use_transactional_tests` setting
