@@ -1,3 +1,22 @@
+*   Raise `ActiveRecord::InverseOfAssociationNotFoundError` if invalid inverse_of is specified.
+
+    This error occurs when the association specified in the `inverse_of` option does not exist on the associated class.
+    Previously this would be implicitly ignored, so the developer wouldn't know they tried to make an invalid association.
+
+    ```ruby
+    Post.belongs_to(:user, inverse_of: :comment) # Correct inverse_of is :post
+    user = User.create!
+
+    # Before:
+    Post.new(user: user) #=> No error
+
+    # After:
+    Post.new(user: user)
+    #=> ActiveRecord::InverseOfAssociationNotFoundError: Could not find the inverse association for user (:comment in User).
+    ```
+
+    *Hiroyuki Ishii*
+
 *   Add support for enabling or disabling transactional tests per database.
 
     A test class can now override the default `use_transactional_tests` setting
