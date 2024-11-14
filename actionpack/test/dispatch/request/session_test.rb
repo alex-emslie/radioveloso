@@ -50,6 +50,12 @@ module ActionDispatch
         assert_empty s
       end
 
+      def test_store
+        s = Session.create(store, req, {})
+        s.store("foo", "bar")
+        assert_equal "bar", s["foo"]
+      end
+
       def test_keys
         s = Session.create(store, req, {})
         s["rails"] = "ftw"
@@ -205,15 +211,24 @@ module ActionDispatch
       end
 
       def app
-        @app ||= RoutedRackApp.new(Router)
+        @app ||= Rack::Lint.new(RoutedRackApp.new(Router))
       end
 
       def test_session_follows_rack_api_contract_1
-        get "/mysessionapp"
+        get "/mysessionapp", env: { Rack::RACK_SESSION => Session.create(store, ActionDispatch::Request.empty, {}) }
         assert_response :ok
         assert_equal "Hello from MySessionApp!", @response.body
         assert_equal "Hello from MySessionApp!", session["hello"]
       end
+
+      private
+        def store
+          Class.new {
+            def load_session(env); [1, {}]; end
+            def session_exists?(env); true; end
+            def delete_session(env, id, options); 123; end
+          }.new
+        end
     end
   end
 end
