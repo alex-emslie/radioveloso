@@ -784,9 +784,9 @@ module ActiveRecord
 
         def table_info(table_name)
           if supports_virtual_columns?
-            internal_exec_query("PRAGMA table_xinfo(#{quote_table_name(table_name)})", "SCHEMA")
+            query("PRAGMA table_xinfo(#{quote_table_name(table_name)})", "SCHEMA")
           else
-            internal_exec_query("PRAGMA table_info(#{quote_table_name(table_name)})", "SCHEMA")
+            query("PRAGMA table_info(#{quote_table_name(table_name)})", "SCHEMA")
           end
         end
 
