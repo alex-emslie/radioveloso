@@ -93,12 +93,27 @@ class Class
       end
 
       name = name.to_sym
-      ::ActiveSupport::ClassAttribute.redefine(self, name, default)
+      namespaced_name = :"__class_attr_#{name}"
+      ::ActiveSupport::ClassAttribute.redefine(self, namespaced_name, default)
 
-      unless singleton_class?
+      delegators = [
+        "def #{name}; #{namespaced_name}; end",
+        "def #{name}=(value); self.#{namespaced_name} = value; end",
+      ]
+
+      class_methods.concat(delegators)
+      if singleton_class?
+        methods.concat(delegators)
+      else
         methods << <<~RUBY if instance_reader
           silence_redefinition_of_method def #{name}
-            defined?(@#{name}) ? @#{name} : self.class.#{name}
+            if defined?(@#{name})
+              @#{name}
+            elsif respond_to?(#{namespaced_name.inspect}, true)
+              #{namespaced_name}
+            else
+              self.class.#{name}
+            end
           end
         RUBY
       end
